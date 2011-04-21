@@ -5,6 +5,7 @@ using System;
 using MonoTouch.Foundation;
 using MonoTouch.UIKit;
 using System.Drawing;
+using System.IO;
 
 namespace escoz
 {
@@ -12,6 +13,7 @@ namespace escoz
 	{
 		NSMutableData imageData;
 		UIActivityIndicatorView indicatorView;
+		string cacheKey;
 	
 		public UIWebImageView (IntPtr handle) : base(handle)
 		{
@@ -38,6 +40,7 @@ namespace escoz
 		public UIWebImageView(RectangleF frame){
 			Initialize();
 			
+			Frame = frame;
 			indicatorView.Frame = new RectangleF (
                 		frame.Size.Width/2,
                 		frame.Size.Height/2,
@@ -46,41 +49,66 @@ namespace escoz
 
 		}
 		
-		public UIWebImageView(RectangleF frame, string url):base(frame){
-			Initialize();
-			Frame = frame;
-			DownloadImage(url);
+		public void LoadImage(string cacheKey, string url){
+			this.cacheKey = cacheKey;
+			
+			// Check in cache
+			string cacheFile = GetCachePath(cacheKey);
+			if(File.Exists(cacheFile))
+			{
+				Image = UIImage.FromFile(cacheFile);
+			}
+			else
+			{
+				// Otherwise download
+				indicatorView.StartAnimating();
+				NSUrlRequest request = new NSUrlRequest(new NSUrl(url));
+				
+				new NSUrlConnection(request, new ConnectionDelegate(SetImageData), true);
+			}
 		}
 		
-		public void DownloadImage(string url){
-			indicatorView.StartAnimating();
-			NSUrlRequest request = new NSUrlRequest(new NSUrl(url));
+		private string GetCachePath(string cacheKey)
+		{
+			string cacheDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Personal),"ImageCache");
+			return Path.Combine(cacheDir, cacheKey);
 			
-			new NSUrlConnection(request, new ConnectionDelegate(this), true);
+		}
+		
+		private void SetImageData(NSData data)
+		{
+			indicatorView.StopAnimating();
+			UIImage downloadedImage = UIImage.LoadFromData(data);
+			Image = downloadedImage;
+			
+			// Save to cache
+			string fileCache = GetCachePath(cacheKey);
+			NSError error;
+			Directory.CreateDirectory(Path.GetDirectoryName(fileCache));
+			data.Save(fileCache, false, out error);
 		}
 		
 		class ConnectionDelegate : NSUrlConnectionDelegate {
 			
-			UIWebImageView _view;
+			NSMutableData imageData = null;
+			Action<NSData> _imageSetter;
 			
-			public ConnectionDelegate(UIWebImageView view){
-				_view = view;
+			public ConnectionDelegate(Action<NSData> imageSetter){
+				_imageSetter = imageSetter;
 			}
 			
 			public override void ReceivedData (NSUrlConnection connection, NSData data)
 			{
-				if (_view.imageData==null)
-					_view.imageData = new NSMutableData();
+				if (imageData==null)
+					imageData = new NSMutableData();
 				
-				_view.imageData.AppendData(data);	
+				imageData.AppendData(data);	
 			}
 			
 			public override void FinishedLoading (NSUrlConnection connection)
 			{
-				_view.indicatorView.StopAnimating();
-				UIImage downloadedImage = UIImage.LoadFromData(_view.imageData);
-				_view.imageData = null;
-				_view.Image = downloadedImage;
+				_imageSetter(imageData);
+				imageData = null;
 			}
 		}
 	}
