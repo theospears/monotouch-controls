@@ -88,6 +88,26 @@ namespace escoz
 			data.Save(fileCache, false, out error);
 		}
 		
+		public override UIColor BackgroundColor {
+			get {
+				return base.BackgroundColor;
+			}
+			set {
+				base.BackgroundColor = value;
+				float hue, saturation, brightness, alpha;
+				value.GetHSBA(out hue, out saturation, out brightness, out alpha);
+				
+				if(brightness < 0.5)
+				{
+					indicatorView.ActivityIndicatorViewStyle = UIActivityIndicatorViewStyle.White;
+				}
+				else
+				{
+					indicatorView.ActivityIndicatorViewStyle = UIActivityIndicatorViewStyle.Gray;
+				}
+			}
+		}
+		
 		class ConnectionDelegate : NSUrlConnectionDelegate {
 			
 			NSMutableData imageData = null;
@@ -108,6 +128,7 @@ namespace escoz
 			public override void FinishedLoading (NSUrlConnection connection)
 			{
 				_imageSetter(imageData);
+				imageData.Dispose();
 				imageData = null;
 			}
 		}
